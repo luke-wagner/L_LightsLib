@@ -24,12 +24,14 @@ class LightsController:
             await self.client.connect()
             print("Connection successful...")
             self.connected = True
-        except:
+        except Exception as e:
+            print(e)
             print("Unable to connect to lights. Continuing program execution...")
             self.connected = False   
-            # When connection fails, run pygame simulation     
-            simul_thread = threading.Thread(target=simul.run_simul, daemon=True)
-            simul_thread.start()
+            # When connection fails, run pygame simulation 
+            if run_simul_on_fail:    
+                simul_thread = threading.Thread(target=simul.run_simul, daemon=True)
+                simul_thread.start()
 
     # Disconnect from the lights
     async def disconnect(self):
