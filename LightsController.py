@@ -53,6 +53,20 @@ class LightsController:
             else:
                 print("Device not found")
                 self.connected = False
+                
+            # Write hex value to the characteristic
+            try:
+                service = await self.connection.service(bluetooth.UUID(SERVICE_UUID))
+                if not service:
+                    print("Service not found")
+                    return
+
+                self.characteristic = await service.characteristic(bluetooth.UUID(CHAR_UUID))
+                if not characteristic:
+                    print("Characteristic not found")
+                    return
+            except Exception as e:
+                pass
 
         except Exception as e:
             print("Unable to connect to lights. Continuing program execution...")
@@ -171,20 +185,9 @@ class LightsController:
         if self.connected == False:
             return
 
-        # Write hex value to the characteristic
         try:
-            service = await self.connection.service(bluetooth.UUID(SERVICE_UUID))
-            if not service:
-                print("Service not found")
-                return
-
-            characteristic = await service.characteristic(bluetooth.UUID(CHAR_UUID))
-            if not characteristic:
-                print("Characteristic not found")
-                return
-
             value_bytes = binascii.unhexlify(hexCode)
-            await characteristic.write(value_bytes)
+            await self.characteristic.write(value_bytes)
             print(f"Sent: {hexCode}")
         except Exception as e:
             print("Error sending write command. Continuing program execution...")
