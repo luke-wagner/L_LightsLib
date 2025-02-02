@@ -1,18 +1,31 @@
 import asyncio
-from bleak import BleakClient
 import time
-import threading
-import copy
+#import threading
+#import copy
+
+import uasyncio as asyncio
+import aioble
+import bluetooth
+import binascii
 
 from config import *
 
 # Simulation of lights for unable to connect
-import lightsimul.simul as simul
+#import lightsimul.simul as simul
+
+def manual_deep_copy(matrix):
+    new_matrix = []
+    for row in matrix:
+        new_matrix.append(row.copy())
+    return new_matrix
+
+def manual_zfill(str, width):
+    return '0' * (width - len(str)) + str
 
 class LightsController:
     def __init__(self):
         self.address = BD_ADDR
-        self.client = BleakClient(self.address)
+        self.connection = None
         self.connected = False
         #asyncio.run(self.connect())
         self.lastFrame = None
@@ -21,21 +34,42 @@ class LightsController:
     # Must run with asyncio.run()
     async def connect(self, run_simul_on_fail=False):
         try:
-            await self.client.connect()
-            print("Connection successful...")
-            self.connected = True
-        except Exception as e:
-            print(e)
-            print("Unable to connect to lights. Continuing program execution...")
-            self.connected = False   
-            # When connection fails, run pygame simulation 
-            if run_simul_on_fail:    
-                simul_thread = threading.Thread(target=simul.run_simul, daemon=True)
-                simul_thread.start()
+            device = None
+            async with aioble.scan(duration_ms=5000, interval_us=30000, window_us=30000, active=True) as scanner:
+                async for result in scanner:
+                    print(result, result.name(), result.rssi, result.services())
+                    if self.address.lower() in str(result):
+                        device = result.device
+                        break
 
+            if device:
+                try:
+                    self.connection = await device.connect(timeout_ms=2000)
+                    print("Connection successful")
+                    self.connected = True  # Only set if connection is valid
+                except asyncio.TimeoutError:
+                    print("Timeout connecting to device")
+                    self.connected = False
+            else:
+                print("Device not found")
+                self.connected = False
+
+        except Exception as e:
+            print("Unable to connect to lights. Continuing program execution...")
+            self.connected = False
+
+            # NOT NEEDED FOR ESP32 VERSION:
+            # -------------------------------------------------------------------
+            # When connection fails, run pygame simulation 
+            #simul_thread = threading.Thread(target=simul.run_simul, daemon=True)
+            #simul_thread.start()
+
+    # NOT YET IMPLEMENTED FOR ESP32 VERSION: (TODO)
+    # ------------------------------------------------------------------
     # Disconnect from the lights
     async def disconnect(self):
-        await self.client.disconnect()
+        #await self.client.disconnect()
+        return
 
     # Draws new frame with reference to the old frame, draws each pixel individually
     async def drawFrame(self, frame):
@@ -56,13 +90,14 @@ class LightsController:
 
             await asyncio.gather(*tasks)
         else:
-            simul.grid = frame
+            #simul.grid = frame
+            pass
 
         end_time = time.time()
         elapsed_time = end_time - start_time
         print(f"Write time: {elapsed_time:.4f} seconds")
 
-        self.lastFrame = copy.deepcopy(frame)
+        self.lastFrame = manual_deep_copy(frame)
 
     '''
     # Draws completely new frame, each bulb is re-initialized. Uses L2CAP procedures
@@ -94,7 +129,7 @@ class LightsController:
     # Get the difference between the two matrices, return the new matrix
     def __computeDifference(self, currentFrame, previousFrame):
         if previousFrame == None:
-            return copy.deepcopy(currentFrame)
+            return manual_deep_copy(currentFrame)
 
         difference = []     # this will be a matrix
 
@@ -122,7 +157,7 @@ class LightsController:
     
     # Draw the specified color at led # = numLed
     async def __drawPixelSingle(self, numLed, color):
-        numValueHex = hex(numLed)[2:].zfill(3)
+        numValueHex = manual_zfill(hex(numLed)[2:], 3)
 
         # craft hex code
         hexCode = "aad1030" + numValueHex
@@ -132,14 +167,42 @@ class LightsController:
         await self.__sendWriteCommand(hexCode)
 
     async def __sendWriteCommand(self, hexCode):
-        # This is the uuid of the device to write to
-        characteristic_uuid = CHAR_UUID
-
         # Don't try writing if not connected to the lights
         if self.connected == False:
             return
 
+        # Write hex value to the characteristic
         try:
-            await self.client.write_gatt_char(characteristic_uuid, bytes.fromhex(hexCode), response=False)
-        except:
+            service = await self.connection.service(bluetooth.UUID(SERVICE_UUID))
+            if not service:
+                print("Service not found")
+                return
+
+            characteristic = await service.characteristic(bluetooth.UUID(CHAR_UUID))
+            if not characteristic:
+                print("Characteristic not found")
+                return
+
+            value_bytes = binascii.unhexlify(hexCode)
+            await characteristic.write(value_bytes)
+            print(f"Sent: {hexCode}")
+        except Exception as e:
             print("Error sending write command. Continuing program execution...")
+            print(e)
+
+
+'''
+async def test_lights():
+    # Create a LightsController object
+    lights = LightsController()
+
+    # Connect to the lights
+    await lights.connect()
+    await lights.drawPixelSingle(1, "2A")
+    await lights.drawPixelSingle(40, "2A")
+    await lights.drawPixelSingle(10, "2A")
+
+# JUST FOR TESTING
+if __name__ == "__main__":
+    asyncio.run(test_lights())
+'''
