@@ -27,46 +27,49 @@ class LightsController:
         self.address = BD_ADDR
         self.connection = None
         self.connected = False
-        #asyncio.run(self.connect())
         self.lastFrame = None
 
     # Establish connection to the lights
     # Must run with asyncio.run()
     async def connect(self, run_simul_on_fail=False):
         try:
-            device = None
+            self.device = None
             async with aioble.scan(duration_ms=5000, interval_us=30000, window_us=30000, active=True) as scanner:
                 async for result in scanner:
                     print(result, result.name(), result.rssi, result.services())
                     if self.address.lower() in str(result):
-                        device = result.device
+                        self.device = result.device
                         break
 
-            if device:
+            if self.device:
                 try:
-                    self.connection = await device.connect(timeout_ms=2000)
+                    self.connection = await self.device.connect(timeout_ms=2000)
                     print("Connection successful")
                     self.connected = True  # Only set if connection is valid
                 except asyncio.TimeoutError:
                     print("Timeout connecting to device")
                     self.connected = False
+                    return False
             else:
                 print("Device not found")
                 self.connected = False
+                return False
                 
             # Write hex value to the characteristic
             try:
                 service = await self.connection.service(bluetooth.UUID(SERVICE_UUID))
                 if not service:
                     print("Service not found")
-                    return
+                    return False
 
                 self.characteristic = await service.characteristic(bluetooth.UUID(CHAR_UUID))
-                if not characteristic:
+                if not self.characteristic:
                     print("Characteristic not found")
-                    return
+                    return False
             except Exception as e:
                 pass
+
+            return True
 
         except Exception as e:
             print("Unable to connect to lights. Continuing program execution...")
@@ -78,11 +81,11 @@ class LightsController:
             #simul_thread = threading.Thread(target=simul.run_simul, daemon=True)
             #simul_thread.start()
 
-    # NOT YET IMPLEMENTED FOR ESP32 VERSION: (TODO)
-    # ------------------------------------------------------------------
+
     # Disconnect from the lights
     async def disconnect(self):
-        #await self.client.disconnect()
+        await self.connection.disconnect()
+        print("Disconnected")
         return
 
     # Draws new frame with reference to the old frame, draws each pixel individually
