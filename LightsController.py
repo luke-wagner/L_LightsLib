@@ -185,13 +185,18 @@ class LightsController:
         if self.connected == False:
             return
 
-        try:
-            value_bytes = binascii.unhexlify(hexCode)
-            await self.characteristic.write(value_bytes)
-            print(f"Sent: {hexCode}")
-        except Exception as e:
-            print("Error sending write command. Continuing program execution...")
-            print(e)
+        successful = False
+
+        while successful == False:
+            try:
+                value_bytes = binascii.unhexlify(hexCode)
+                await self.characteristic.write(value_bytes)
+                print(f"Sent: {hexCode}")
+                successful = True
+            except Exception as e:
+                #print("Error sending write command. Continuing program execution...")
+                #print(e)
+                pass
 
 
 '''
