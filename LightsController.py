@@ -36,7 +36,7 @@ class LightsController:
             self.device = None
             async with aioble.scan(duration_ms=5000, interval_us=30000, window_us=30000, active=True) as scanner:
                 async for result in scanner:
-                    print(result, result.name(), result.rssi, result.services())
+                    #print(result, result.name(), result.rssi, result.services())
                     if self.address.lower() in str(result):
                         self.device = result.device
                         break
@@ -85,7 +85,7 @@ class LightsController:
     # Disconnect from the lights
     async def disconnect(self):
         await self.connection.disconnect()
-        print("Disconnected")
+        print("Lights disconnected")
         return
 
     # Draws new frame with reference to the old frame, draws each pixel individually
