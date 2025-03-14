@@ -9,6 +9,8 @@ import bluetooth
 import binascii
 
 from config import *
+import espinput.ledcontrols as leds
+from espinput.input import write_led
 
 # Simulation of lights for unable to connect
 #import lightsimul.simul as simul
@@ -34,6 +36,10 @@ class LightsController:
     async def connect(self, run_simul_on_fail=False):
         try:
             self.device = None
+
+            # Start load animation on the LEDs
+            loading_task = asyncio.create_task(leds.show_loading())
+
             async with aioble.scan(duration_ms=5000, interval_us=30000, window_us=30000, active=True) as scanner:
                 async for result in scanner:
                     #print(result, result.name(), result.rssi, result.services())
@@ -68,12 +74,19 @@ class LightsController:
                     return False
             except Exception as e:
                 pass
-
+            
+            # Stop the loading animation
+            await leds.interrupt_loading(loading_task)
+            await leds.flash_twice() # signal connected
+            write_led(1, 1)          # keep light on while connected
             return True
 
         except Exception as e:
             print("Unable to connect to lights. Continuing program execution...")
             self.connected = False
+
+            # Stop the loading animation
+            await leds.interrupt_loading(loading_task)
 
             # NOT NEEDED FOR ESP32 VERSION:
             # -------------------------------------------------------------------
@@ -84,8 +97,10 @@ class LightsController:
 
     # Disconnect from the lights
     async def disconnect(self):
+        await self.drawBlankFrame() # Draw blank frame before disconnect
         await self.connection.disconnect()
         print("Lights disconnected")
+        await leds.power_down_anim()
         return
 
     # Draws new frame with reference to the old frame, draws each pixel individually
