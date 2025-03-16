@@ -9,7 +9,7 @@ import bluetooth
 import binascii
 
 from config import *
-import espinput.ledcontrols as leds
+from espinput.LEDController import LEDController
 from espinput.input import write_led
 
 # Simulation of lights for unable to connect
@@ -30,6 +30,7 @@ class LightsController:
         self.connection = None
         self.connected = False
         self.lastFrame = None
+        self.ledController = None
 
     # Establish connection to the lights
     # Must run with asyncio.run()
@@ -38,7 +39,10 @@ class LightsController:
             self.device = None
 
             # Start load animation on the LEDs
-            loading_task = asyncio.create_task(leds.show_loading())
+            if self.ledController is not None:
+                await self.ledController.show_loading(wait_for_completion=False)
+            else:
+                self.warnNoLEDController()
 
             async with aioble.scan(duration_ms=5000, interval_us=30000, window_us=30000, active=True) as scanner:
                 async for result in scanner:
@@ -75,10 +79,11 @@ class LightsController:
             except Exception as e:
                 pass
             
-            # Stop the loading animation
-            await leds.interrupt_loading(loading_task)
-            await leds.flash_twice() # signal connected
-            write_led(1, 1)          # keep light on while connected
+            # Stop the loading animation, signal connected
+            if self.ledController is not None:
+                await self.ledController.flash_twice(wait_for_completion=True) # signal connected
+                write_led(1, 1) # keep light on while connected
+
             return True
 
         except Exception as e:
@@ -86,7 +91,8 @@ class LightsController:
             self.connected = False
 
             # Stop the loading animation
-            await leds.interrupt_loading(loading_task)
+            if self.ledController is not None:
+                await self.ledController.all_off()
 
             # NOT NEEDED FOR ESP32 VERSION:
             # -------------------------------------------------------------------
@@ -97,11 +103,28 @@ class LightsController:
 
     # Disconnect from the lights
     async def disconnect(self):
+        # Show disconnect anim
+        # This should be able to run asynch
+        # TODO: Not working correctly, fix this
+        # Probably because the LEDController is attached to the LightsController object,
+        #  which is being deleted before the animation completes. Possible solution: create
+        #  a singleton instance of the LEDController outside the LightsController, pass in by reference
+        if self.ledController is not None:
+            await self.ledController.power_down_anim(wait_for_completion=True)
+
+        # Continue with disconnect
         await self.drawBlankFrame() # Draw blank frame before disconnect
         await self.connection.disconnect()
         print("Lights disconnected")
-        await leds.power_down_anim()
         return
+    
+    # Configure which instance of LEDController to use
+    def attachLEDController(self, controller):
+        print("Attaching LED controller...")
+        self.ledController = controller
+
+    def warnNoLEDController(self):
+        print("WARNING: No LEDController attached. Unable to run LED functions...")
 
     # Draws new frame with reference to the old frame, draws each pixel individually
     async def drawFrame(self, frame):
