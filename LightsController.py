@@ -10,7 +10,7 @@ import binascii
 
 from config import *
 from espinput.LEDController import LEDController
-from espinput.input import write_led
+from espinput.iodefs import write_led
 
 # Simulation of lights for unable to connect
 #import lightsimul.simul as simul
